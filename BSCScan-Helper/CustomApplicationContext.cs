@@ -16,6 +16,7 @@ namespace BSCScan_Helper
                 Text = "BSCScan helper",
                 Icon = (System.Drawing.Icon)Resources.ResourceManager.GetObject("icon"),
                 ContextMenu = new ContextMenu(new MenuItem[] {
+                new MenuItem("Reload config", Program.ReadFromConfigProxy),
                 new MenuItem("Exit", Exit)
             }),
                 Visible = true
