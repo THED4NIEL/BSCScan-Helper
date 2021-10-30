@@ -7,7 +7,8 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
-
+using System.Xml;
+using Microsoft.Toolkit.Uwp.Notifications;
 
 namespace BSCScan_Helper
 {
@@ -18,22 +19,22 @@ namespace BSCScan_Helper
         private static string Server;
         private static bool InstantCopy;
         private static KeyboardHook hook;
+        private static ClipboardWatcher ClipboardViewer;
+        private static string clipboard_temp;
 
 
         [STAThread]
         static void Main()
         {
-            ReadConfig();
-
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            RegisterHotkey();
+            Setup();
 
             Application.Run(new CustomApplicationContext());
         }
 
-        private static void ReadConfig()
+        private static void Setup()
         {
             Server = Config.Get("Server");
 
@@ -42,26 +43,33 @@ namespace BSCScan_Helper
             string _Supported = "(?'Transaction'0x[a-zA-Z0-9]{64})|(?'Address'0x[a-zA-Z0-9]{40})";
 
             Supported = new Regex(_Supported, RegexOptions.ExplicitCapture | RegexOptions.Compiled);
-        }
 
-        private static void RegisterHotkey()
-        {
+            ClipboardViewer = new ClipboardWatcher();
+
+            ToastNotificationManagerCompat.OnActivated += toastArgs => { Execute(); };
+            ClipboardViewer.ClipboardChanged += new EventHandler<ClipboardChangedEventArgs>(ClipboardNotification);
+
             hook = new KeyboardHook();
-            hook.KeyPressed += new EventHandler<KeyPressedEventArgs>(Execute);
+            hook.KeyPressed += new EventHandler<KeyPressedEventArgs>(Hotkey);
             hook.RegisterHotKey(ModifierKeys.Win | ModifierKeys.NoRepeat, Keys.Escape);
+
         }
 
-        private static void Execute(object sender, KeyPressedEventArgs e)
+        private static void ClipboardNotification(object sender, ClipboardChangedEventArgs e)
+        {
+            if (Check_Clipboard())
+            {
+                Notify();
+            }
+        }
+
+        private static void Hotkey(object sender, EventArgs e)
         {
             TriggerClipboardCopy();
 
-            if (Clipboard.ContainsText())
+            if (Check_Clipboard())
             {
-                string Clipboard_Content = Clipboard.GetText(TextDataFormat.Text).Replace("\r\n", " ");
-
-                List<string> ProcessedItems = GenerateLinks(Clipboard_Content);
-
-                LaunchLinks(ProcessedItems);
+                Execute();
             }
         }
 
@@ -75,12 +83,44 @@ namespace BSCScan_Helper
             }
         }
 
-        private static void LaunchLinks(List<string> ProcessedItems)
+        private static bool Check_Clipboard()
         {
-            foreach (string Address in ProcessedItems)
+            if (Clipboard.ContainsText())
             {
-                Process.Start(Address);
+                clipboard_temp = Clipboard.GetText(TextDataFormat.Text).Replace("\r\n", "");
+                if (Supported.IsMatch(clipboard_temp))
+                {
+                    return true;
+                }
+                else
+                {
+                    clipboard_temp = String.Empty;
+                    return false;
+                }
             }
+            else
+            {
+                clipboard_temp = String.Empty;
+                return false;
+            }
+        }
+
+        private static void Notify()
+        {
+            new ToastContentBuilder()
+                .AddArgument("TitleText", "BSCScan Helper")
+                .AddText("blockchain address(es) found in clipboard.")
+                .AddText("tap to open")
+                .AddToastActivationInfo("", ToastActivationType.Background)
+                .SetToastDuration(ToastDuration.Short)
+                .SetBackgroundActivation()
+                .Show();
+        }
+
+        private static void Execute()
+        {
+            List<string> ProcessedItems = GenerateLinks(clipboard_temp);
+            LaunchLinks(ProcessedItems);
         }
 
         private static List<string> GenerateLinks(in string Clipboard_Content)
@@ -114,5 +154,12 @@ namespace BSCScan_Helper
             return ProcessedItems;
         }
 
+        private static void LaunchLinks(List<string> ProcessedItems)
+        {
+            foreach (string Address in ProcessedItems)
+            {
+                Process.Start(Address);
+            }
+        }
     }
 }
