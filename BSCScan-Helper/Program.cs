@@ -1,4 +1,5 @@
 ﻿using KeyboardHookClass;
+using Microsoft.Toolkit.Uwp.Notifications;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -7,8 +8,6 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
-using System.Xml;
-using Microsoft.Toolkit.Uwp.Notifications;
 
 namespace BSCScan_Helper
 {
@@ -17,10 +16,11 @@ namespace BSCScan_Helper
         private static readonly NameValueCollection Config = ConfigurationManager.AppSettings;
         private static Regex Supported;
         private static string Server;
-        private static bool InstantCopy;
+        private static bool InstantCopy, NotificationBlock;
         private static KeyboardHook hook;
         private static ClipboardWatcher ClipboardViewer;
         private static string clipboard_temp;
+        private static System.Windows.Forms.Timer timerNotificationBlock;
 
 
         [STAThread]
@@ -53,17 +53,20 @@ namespace BSCScan_Helper
             hook.KeyPressed += new EventHandler<KeyPressedEventArgs>(Hotkey);
             hook.RegisterHotKey(ModifierKeys.Win | ModifierKeys.NoRepeat, Keys.Escape);
 
+            timerNotificationBlock = new System.Windows.Forms.Timer();
+            timerNotificationBlock.Tick += new EventHandler(StopNotifificationBlockTimer);
+            timerNotificationBlock.Interval = 1000;
         }
 
         private static void ClipboardNotification(object sender, ClipboardChangedEventArgs e)
         {
-            if (Check_Clipboard())
+            if (Check_Clipboard() && !NotificationBlock)
             {
                 Notify();
             }
         }
 
-        private static void Hotkey(object sender, EventArgs e)
+        private static void Hotkey(Object sender, EventArgs e)
         {
             TriggerClipboardCopy();
 
@@ -77,10 +80,18 @@ namespace BSCScan_Helper
         {
             if (InstantCopy)
             {
+                NotificationBlock = true;
+
                 Thread.Sleep(200);
                 SendKeys.Send("^c");
                 Thread.Sleep(200);
             }
+        }
+
+        private static void StopNotifificationBlockTimer(Object sender, EventArgs e)
+        {
+            timerNotificationBlock.Stop();
+            NotificationBlock = false;
         }
 
         private static bool Check_Clipboard()
@@ -108,13 +119,15 @@ namespace BSCScan_Helper
         private static void Notify()
         {
             new ToastContentBuilder()
-                .AddArgument("TitleText", "BSCScan Helper")
                 .AddText("blockchain address(es) found in clipboard.")
                 .AddText("tap to open")
                 .AddToastActivationInfo("", ToastActivationType.Background)
                 .SetToastDuration(ToastDuration.Short)
                 .SetBackgroundActivation()
-                .Show();
+                .Show(toast =>
+                 {
+                     toast.ExpirationTime = DateTime.Now.AddSeconds(10);
+                 });
         }
 
         private static void Execute()
